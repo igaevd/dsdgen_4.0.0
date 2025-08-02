@@ -1,0 +1,33 @@
+# Object files
+*.o
+
+# Temp ms office files
+~$*
+
+# Executables
+distcomp
+dsdgen
+dsdgen_origin
+mkheader
+dbgen2
+dbgen_tpcd
+
+# logs
+*.log
+
+# Generated header files
+columns.h
+streams.h
+tables.h
+tpcds.idx
+tpcds.idx.h
+
+# Chunk file
+/chunks.csv
+
+# Generated data files
+*.dat
+
+# Others
+.ctags_updated
+tags
