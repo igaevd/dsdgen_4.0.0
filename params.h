@@ -60,7 +60,7 @@ option_t options[] =
 {"PARALLEL",	OPT_INT,			16,"build data in <n> separate chunks", NULL, ""}, 
 {"CHILD",		OPT_INT,			17,"generate <n>th chunk of the parallelized data", NULL, "1"}, 
 {"CHKSEEDS",		OPT_FLG|OPT_HIDE,	18, "validate RNG usage for parallelism", NULL, "N"}, 
-{"RELEASE",		OPT_FLG,			19, "display the release information", printReleaseInfo, "N"}, 
+{"RELEASE",		OPT_FLG,			19, "display the release information", printReleaseInfo, "N"},
 {"_FILTER",		OPT_FLG,			20, "output data to stdout", NULL, "N"}, 
 {"VALIDATE",	OPT_FLG,			21, "produce rows for data validation", NULL, "N"}, 
 {"VCOUNT",		OPT_INT|OPT_ADV,	22, "set number of validation rows to be produced", NULL, "50"}, 

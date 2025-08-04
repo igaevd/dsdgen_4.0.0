@@ -56,8 +56,6 @@ static FILE *fpOutfile = NULL;
 static FILE *fpDeleteFile;
 static char *arDeleteFiles[3] = {"", "delete_", "inventory_delete_"};
 
-static int current_table = -1;
-
 int print_jdate (FILE *pFile, ds_key_t kValue);
 
 void 
@@ -66,7 +64,7 @@ print_close(int tbl)
    tdef *pTdef = getSimpleTdefsByNumber(tbl);
 
 	fpOutfile = NULL;
-	if (pTdef->outfile)
+	if (pTdef->outfile && pTdef->outfile != stdout)
 	{
 		fclose(pTdef->outfile);
 		pTdef->outfile = NULL;
@@ -85,6 +83,9 @@ print_separator (int sep)
 	static char *pDelimiter;
 	static int init = 0;
 	
+	if (!fpOutfile)
+		return 0;
+		
 	if (!init)
 	{
         pDelimiter = get_str ("DELIMITER");
@@ -141,6 +142,9 @@ print_prep (int table, int update)
 void
 print_integer (int nColumn, int val, int sep)
 {
+	if (!fpOutfile)
+		return;
+		
 	if (!nullCheck(nColumn))
 	{
 		if (fprintf (fpOutfile, "%d", val) < 0)
@@ -160,6 +164,9 @@ print_integer (int nColumn, int val, int sep)
 void
 print_varchar (int nColumn, char *val, int sep)
 {
+	if (!fpOutfile)
+		return;
+		
 	size_t nLength;
 
 	if (!nullCheck(nColumn) && (val != NULL))
@@ -189,6 +196,9 @@ print_varchar (int nColumn, char *val, int sep)
 void
 print_delete (int * val)
 {
+   if (!fpOutfile)
+      return;
+      
    if (print_jdate(fpDeleteFile, *val))
 	{
       fprintf(stderr, "ERROR: Failed to write delete key\n");
@@ -232,6 +242,9 @@ print_cp_delete (int nCatalog, int nPage)
 void
 print_char (int nColumn, char val, int sep)
 {
+	if (!fpOutfile)
+		return;
+		
 	if (!nullCheck(nColumn))
 	{
 		if (fwrite (&val, 1, 1, fpOutfile) != 1)
@@ -251,6 +264,9 @@ print_char (int nColumn, char val, int sep)
 void
 print_date (int nColumn, ds_key_t val, int sep)
 {
+	if (!fpOutfile)
+		return;
+		
 	if (!nullCheck(nColumn))
 	{
 		if (val > 0)
@@ -278,6 +294,9 @@ print_date (int nColumn, ds_key_t val, int sep)
 void
 print_time (int nColumn, ds_key_t val, int sep)
 {
+	if (!fpOutfile)
+		return;
+		
 	int nHours, nMinutes, nSeconds;
 
 	nHours = (int)(val / 3600);
@@ -308,6 +327,9 @@ print_time (int nColumn, ds_key_t val, int sep)
 void
 print_decimal (int nColumn, decimal_t * val, int sep)
 {
+	if (!fpOutfile)
+		return;
+		
 	int i;
 	double dTemp;
 
@@ -340,6 +362,9 @@ print_decimal (int nColumn, decimal_t * val, int sep)
 void
 print_key (int nColumn, ds_key_t val, int sep)
 {
+	if (!fpOutfile)
+		return;
+		
 	if (!nullCheck(nColumn))
 	{
 		if (val != (ds_key_t) -1) /* -1 is a special value, indicating NULL */
@@ -365,6 +390,9 @@ print_key (int nColumn, ds_key_t val, int sep)
 void
 print_id (int nColumn, ds_key_t val, int sep)
 {
+   if (!fpOutfile)
+      return;
+      
    char szID[RS_BKEY + 1];
    
    if (!nullCheck(nColumn))
@@ -399,6 +427,9 @@ print_id (int nColumn, ds_key_t val, int sep)
 void
 print_boolean (int nColumn, int val, int sep)
 {
+	if (!fpOutfile)
+		return;
+		
 	if (!nullCheck(nColumn))
 	{
 
@@ -442,11 +473,11 @@ print_start (int tbl)
    char path[256];
    tdef *pTdef = getSimpleTdefsByNumber(tbl);
 
-
-   current_table = tbl;
-
-   if (is_set ("FILTER"))
+   if (is_set ("_FILTER") || is_set ("STDOUT"))
+   {
 	   fpOutfile = stdout;
+	   pTdef->outfile = stdout;
+   }
    else
    {
 	   if (pTdef->outfile == NULL)
@@ -480,9 +511,13 @@ print_start (int tbl)
 		   pTdef->outfile = fopen (path, "w");
 #endif
 	   }
+	   fpOutfile = pTdef->outfile;
    }
    
-   fpOutfile = pTdef->outfile;
+   /* If fpOutfile is NULL in FILTER mode, it means we're skipping this table */
+   if ((is_set("_FILTER") || is_set("STDOUT")) && fpOutfile == NULL)
+      return 0;
+      
    res = (fpOutfile != NULL);
 
    if (!res)                    /* open failed! */
@@ -534,10 +569,13 @@ print_end (int tbl)
         init = 1;
      }
 
-   if (add_term)
+   if (fpOutfile && add_term)
       fwrite(term, 1, add_term, fpOutfile);
-   fprintf (fpOutfile, "\n");
-   fflush(fpOutfile);
+   if (fpOutfile)
+   {
+      fprintf (fpOutfile, "\n");
+      fflush(fpOutfile);
+   }
 
    return (res);
 }
@@ -615,6 +653,9 @@ openDeleteFile(int bOpen)
 void
 print_string (char *szMessage, ds_key_t val)
 {
+	if (!fpOutfile)
+		return;
+		
 	if (fprintf (fpOutfile, szMessage, val) < 0)
 	{
 		fprintf(stderr, "ERROR: Failed to write string\n");
@@ -672,6 +713,9 @@ print_jdate (FILE *pFile, ds_key_t kValue)
 void
 print_validation(ds_key_t kRowNumber)
 {
+	if (!fpOutfile)
+		return;
+		
 	static int bInit = 0;
 	static char szValidateFormat[20];
 
