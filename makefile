@@ -224,7 +224,7 @@ W_OBJ = w_call_center.o w_catalog_page.o w_catalog_returns.o w_catalog_sales.o \
 	w_item.o \
 	w_promotion.o w_reason.o w_ship_mode.o w_store.o w_store_returns.o \
 	w_store_sales.o w_timetbl.o w_warehouse.o w_web_page.o w_web_returns.o \
-	w_web_sales.o w_web_site.o dbgen_version.o
+	w_web_sales.o w_web_site.o dbgen_version.o stable_rng.o
 #
 OBJ1 =	$(S_OBJ) $(W_OBJ) $(DBGEN_OBJ)
 OBJ2 =	$(QGEN_OBJ)
@@ -684,7 +684,8 @@ w_web_returns.o: tdef_functions.h
 w_web_sales.o: config.h porting.h pricing.h decimal.h mathops.h w_web_sales.h
 w_web_sales.o: w_web_returns.h date.h genrand.h dist.h address.h constants.h
 w_web_sales.o: build_support.h columns.h misc.h print.h tables.h nulls.h
-w_web_sales.o: tdefs.h tdef_functions.h scaling.h permute.h scd.h parallel.h
+w_web_sales.o: tdefs.h tdef_functions.h scaling.h permute.h scd.h parallel.h stable_rng.h
+stable_rng.o: config.h porting.h stable_rng.h params.h tables.h tdefs.h
 w_web_site.o: config.h porting.h constants.h address.h w_web_site.h decimal.h
 w_web_site.o: mathops.h genrand.h date.h dist.h tables.h columns.h print.h
 w_web_site.o: scaling.h build_support.h pricing.h misc.h nulls.h tdefs.h

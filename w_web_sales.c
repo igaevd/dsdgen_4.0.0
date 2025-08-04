@@ -53,6 +53,7 @@
 #include "permute.h"
 #include "scd.h"
 #include "parallel.h"
+#include "stable_rng.h"
 
 struct W_WEB_SALES_TBL g_w_web_sales;
 ds_key_t skipDays(int nTable, ds_key_t *pRemainder);
@@ -188,19 +189,26 @@ mk_detail (void *row, int bPrint)
 
       /** 
       * having gone to the trouble to make the sale, now let's see if it gets returned
+      * Use stable RNG to ensure consistent returns across separate runs
       */
-      genrand_integer(&nTemp, DIST_UNIFORM, 0, 99, 0, WR_IS_RETURNED);
-      if (nTemp < WR_RETURN_PCT)
+      int nScale = get_int("SCALE");
+      int current_table = get_current_table_id();
+      /* Always use WEB_SALES for stable RNG to ensure consistency */
+      int should_have_return = stable_rand_10pct(WEB_SALES, nScale, r->ws_order_number);
+      
+      if (should_have_return)
       {
          mk_w_web_returns(&w_web_returns, 1);
-         if (bPrint)
+         /* Only print returns if we're generating web_returns table */
+         if (bPrint && current_table == WEB_RETURNS)
 			 pr_w_web_returns(&w_web_returns);
       }
 
       /**
       * now we print out the order and lineitem together as a single row
+      * Only print sales if we're generating web_sales table
       */
-      if (bPrint)
+      if (bPrint && current_table == WEB_SALES)
 		  pr_w_web_sales(NULL);
 
 	  return;
