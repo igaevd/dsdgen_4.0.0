@@ -606,7 +606,7 @@ w_catalog_sales.o: config.h porting.h w_catalog_sales.h pricing.h decimal.h
 w_catalog_sales.o: mathops.h w_catalog_returns.h date.h genrand.h dist.h
 w_catalog_sales.o: address.h constants.h columns.h tables.h build_support.h
 w_catalog_sales.o: print.h nulls.h tdefs.h tdef_functions.h scaling.h
-w_catalog_sales.o: permute.h params.h r_params.h release.h parallel.h scd.h
+w_catalog_sales.o: permute.h params.h r_params.h release.h parallel.h scd.h stable_rng.h
 w_customer_address.o: config.h porting.h w_customer_address.h constants.h
 w_customer_address.o: address.h date.h mathops.h decimal.h genrand.h dist.h
 w_customer_address.o: columns.h build_support.h pricing.h print.h tables.h

@@ -53,6 +53,7 @@
 #include "params.h"
 #include "parallel.h"
 #include "scd.h"
+#include "stable_rng.h"
 
 struct W_CATALOG_SALES_TBL g_w_catalog_sales;
 ds_key_t skipDays(int nTable, ds_key_t *pRemainder);
@@ -216,19 +217,26 @@ mk_detail(void *row, int bPrint)
 
 	/** 
 	* having gone to the trouble to make the sale, now let's see if it gets returned
+	* Use stable RNG to ensure consistent returns across separate runs
 	*/
-	genrand_integer(&nTemp, DIST_UNIFORM, 0, 99, 0, CR_IS_RETURNED);
-	if (nTemp < CR_RETURN_PCT)
+	int nScale = get_int("SCALE");
+	int current_table = get_current_table_id();
+	/* Always use CATALOG_SALES for stable RNG to ensure consistency */
+	int should_have_return = stable_rand_10pct(CATALOG_SALES, nScale, r->cs_order_number);
+	
+	if (should_have_return)
 	{
 		mk_w_catalog_returns(NULL, 1);
-      if (bPrint)
-         pr_w_catalog_returns(NULL);
+		/* Only print returns if we're generating catalog_returns table */
+		if (bPrint && current_table == CATALOG_RETURNS)
+			pr_w_catalog_returns(NULL);
 	}
 
    /**
    * now we print out the order and lineitem together as a single row
+   * Only print sales if we're generating catalog_sales table
    */
-   if (bPrint)
+   if (bPrint && current_table == CATALOG_SALES)
       pr_w_catalog_sales(NULL);
 
    return;
