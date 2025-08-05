@@ -50,6 +50,8 @@
 #include "permute.h"
 #include "scd.h"
 #include "parallel.h"
+#include "stable_rng.h"
+#include "params.h"
 #ifdef JMS
 extern rng_t Streams[];
 #endif
@@ -97,15 +99,23 @@ mk_master (void *row, ds_key_t index)
       jDate += 1;
       kNewDateIndex += dateScaling(STORE_SALES, jDate);
    }
-		r->ss_sold_store_sk = mk_join (SS_SOLD_STORE_SK, STORE, 1);
-		r->ss_sold_time_sk = mk_join (SS_SOLD_TIME_SK, TIME, 1);
-		r->ss_sold_date_sk = mk_join (SS_SOLD_DATE_SK, DATE, 1);
-		r->ss_sold_customer_sk = mk_join (SS_SOLD_CUSTOMER_SK, CUSTOMER, 1);
-		r->ss_sold_cdemo_sk = mk_join (SS_SOLD_CDEMO_SK, CUSTOMER_DEMOGRAPHICS, 1);
-		r->ss_sold_hdemo_sk = mk_join (SS_SOLD_HDEMO_SK, HOUSEHOLD_DEMOGRAPHICS, 1);
-		r->ss_sold_addr_sk = mk_join (SS_SOLD_ADDR_SK, CUSTOMER_ADDRESS, 1);
+		int nScale = get_int("SCALE");
+		r->ss_sold_store_sk = stable_mk_join(SS_SOLD_STORE_SK, STORE, nScale, index, SS_SOLD_STORE_SK);
+		r->ss_sold_time_sk = stable_mk_join(SS_SOLD_TIME_SK, TIME, nScale, index, SS_SOLD_TIME_SK);
+		r->ss_sold_date_sk = stable_mk_join(SS_SOLD_DATE_SK, DATE, nScale, index, SS_SOLD_DATE_SK);
+		
+		// Check if customer should be NULL (assuming 5% NULL rate)
+		if (stable_is_null(STORE_SALES, nScale, index, SS_SOLD_CUSTOMER_SK, 5)) {
+			r->ss_sold_customer_sk = -1;  // NULL
+		} else {
+			r->ss_sold_customer_sk = stable_mk_join(SS_SOLD_CUSTOMER_SK, CUSTOMER, nScale, index, SS_SOLD_CUSTOMER_SK);
+		}
+		
+		r->ss_sold_cdemo_sk = stable_mk_join(SS_SOLD_CDEMO_SK, CUSTOMER_DEMOGRAPHICS, nScale, index, SS_SOLD_CDEMO_SK);
+		r->ss_sold_hdemo_sk = stable_mk_join(SS_SOLD_HDEMO_SK, HOUSEHOLD_DEMOGRAPHICS, nScale, index, SS_SOLD_HDEMO_SK);
+		r->ss_sold_addr_sk = stable_mk_join(SS_SOLD_ADDR_SK, CUSTOMER_ADDRESS, nScale, index, SS_SOLD_ADDR_SK);
 		r->ss_ticket_number = index;
-		genrand_integer(&nItemIndex, DIST_UNIFORM, 1, nItemCount, 0, SS_SOLD_ITEM_SK);
+		nItemIndex = stable_genrand_integer(STORE_SALES, nScale, index, 1, nItemCount, SS_SOLD_ITEM_SK);
 
       return;
 }
@@ -114,7 +124,6 @@ mk_master (void *row, ds_key_t index)
 static void
 mk_detail (void *row, int bPrint)
 {
-int nTemp;
 struct W_STORE_RETURNS_TBL ReturnRow;
 struct W_STORE_SALES_TBL *r;
 tdef *pT = getSimpleTdefsByNumber(STORE_SALES);
@@ -124,7 +133,8 @@ tdef *pT = getSimpleTdefsByNumber(STORE_SALES);
 	else
 		r = row;
 
-   nullSet(&pT->kNullBitMap, SS_NULLS);
+   // Don't use nullSet - we handle NULLs deterministically
+	// nullSet(&pT->kNullBitMap, SS_NULLS);
 	/* 
 	 * items need to be unique within an order
 	 * use a sequence within the permutation 
@@ -132,22 +142,37 @@ tdef *pT = getSimpleTdefsByNumber(STORE_SALES);
 	if (++nItemIndex > nItemCount)
       nItemIndex = 1;
    r->ss_sold_item_sk = matchSCDSK(getPermutationEntry(pItemPermutation, nItemIndex), r->ss_sold_date_sk, ITEM);
-	r->ss_sold_promo_sk = mk_join (SS_SOLD_PROMO_SK, PROMOTION, 1);
+	int nScale = get_int("SCALE");
+	r->ss_sold_promo_sk = stable_mk_join(SS_SOLD_PROMO_SK, PROMOTION, nScale, r->ss_ticket_number * 1000L + nItemIndex, SS_SOLD_PROMO_SK);
 	set_pricing(SS_PRICING, &r->ss_pricing);
 
 	/** 
 	* having gone to the trouble to make the sale, now let's see if it gets returned
+	* Use stable RNG to ensure consistent returns across separate runs
 	*/
-	genrand_integer(&nTemp, DIST_UNIFORM, 0, 99, 0, SR_IS_RETURNED);
-	if (nTemp < SR_RETURN_PCT)
+	nScale = get_int("SCALE");
+	int current_table = get_current_table_id();
+	/* Always use STORE_SALES for stable RNG to ensure consistency */
+	/* Use combination of ticket_number and item_sk for uniqueness */
+	/* Handle NULL item_sk (-1) properly */
+	ds_key_t item_part = (r->ss_sold_item_sk == -1) ? 99999L : (r->ss_sold_item_sk % 100000L);
+	ds_key_t combined_key = r->ss_ticket_number * 100000L + item_part;
+	int should_have_return = stable_rand_10pct(STORE_SALES, nScale, combined_key);
+	
+	if (should_have_return)
 	{
 		mk_w_store_returns(&ReturnRow, 1);
-      if (bPrint)
-         pr_w_store_returns(&ReturnRow);
+		/* Only print returns if we're generating store_returns table */
+		if (bPrint && current_table == STORE_RETURNS)
+			pr_w_store_returns(&ReturnRow);
 	}
 
-   if (bPrint)
-      pr_w_store_sales(NULL);
+	/**
+	* now we print out the order and lineitem together as a single row
+	* Only print sales if we're generating store_sales table
+	*/
+	if (bPrint && current_table == STORE_SALES)
+		pr_w_store_sales(NULL);
 	
 	return;
 }
@@ -246,7 +271,8 @@ mk_w_store_sales (void *row, ds_key_t index)
 	mk_master(row, index);
 
    /* set the number of lineitems and build them */
-	genrand_integer(&nLineitems, DIST_UNIFORM, 8, 16, 0, SS_TICKET_NUMBER);
+	int nScale = get_int("SCALE");
+	nLineitems = stable_genrand_integer(STORE_SALES, nScale, index, 8, 16, SS_TICKET_NUMBER);
    for (i = 1; i <= nLineitems; i++)
    {
 	   mk_detail(NULL, 1);
@@ -284,8 +310,9 @@ vld_w_store_sales(int nTable, ds_key_t kRow, int *Permutation)
 	row_skip(STORE_RETURNS, kRow - 1);
 	jDate = skipDays(STORE_SALES, &kNewDateIndex);		
 	mk_master(NULL, kRow);
-	genrand_integer(&nMaxLineitem, DIST_UNIFORM, 8, 16, 9, SS_TICKET_NUMBER);
-	genrand_integer(&nLineitem, DIST_UNIFORM, 1, nMaxLineitem, 0, SS_PRICING_QUANTITY);
+	int nScale = get_int("SCALE");
+	nMaxLineitem = stable_genrand_integer(STORE_SALES, nScale, kRow, 8, 16, SS_TICKET_NUMBER);
+	nLineitem = stable_genrand_integer(STORE_SALES, nScale, kRow, 1, nMaxLineitem, SS_PRICING_QUANTITY);
 	for (i = 1; i < nLineitem; i++)
 	{
 		mk_detail(NULL, 0);

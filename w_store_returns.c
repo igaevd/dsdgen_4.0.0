@@ -46,6 +46,8 @@
 #include "build_support.h"
 #include "nulls.h"
 #include "tdefs.h"
+#include "stable_rng.h"
+#include "params.h"
 
 struct W_STORE_RETURNS_TBL g_w_store_returns;
 extern struct W_STORE_SALES_TBL g_w_store_sales;
@@ -89,7 +91,8 @@ mk_w_store_returns (void * row, ds_key_t index)
         strtodec (&dMax, "100000.00");
 	}
 	
-	nullSet(&pT->kNullBitMap, SR_NULLS);
+	/* Don't use random NULL generation - we handle NULLs deterministically */
+	/* nullSet(&pT->kNullBitMap, SR_NULLS); */
 	/*
 	* Some of the information in the return is taken from the original sale
 	* which has been regenerated
@@ -101,26 +104,40 @@ mk_w_store_returns (void * row, ds_key_t index)
 	/*
 	 * some of the fields are conditionally taken from the sale 
 	 */
-	r->sr_customer_sk = mk_join (SR_CUSTOMER_SK, CUSTOMER, 1);
-	if (genrand_integer(NULL, DIST_UNIFORM, 1, 100, 0, SR_TICKET_NUMBER) < SR_SAME_CUSTOMER)
-		r->sr_customer_sk = sale->ss_sold_customer_sk;
+	int nScale = get_int("SCALE");
+	/* Use combination of ticket_number and item_sk for uniqueness */
+	ds_key_t item_part = (sale->ss_sold_item_sk == -1) ? 99999L : (sale->ss_sold_item_sk % 100000L);
+	ds_key_t combined_key = sale->ss_ticket_number * 100000L + item_part;
+	
+	/* If sale customer is NULL, return must also be NULL */
+	if (sale->ss_sold_customer_sk == -1) {
+		r->sr_customer_sk = -1;  /* Preserve NULL */
+	} else {
+		/* Sale has customer, so return can have customer or different customer */
+		int rand_val = stable_genrand_integer(STORE_RETURNS, nScale, combined_key, 1, 100, SR_TICKET_NUMBER);
+		if (rand_val < SR_SAME_CUSTOMER) {
+			r->sr_customer_sk = sale->ss_sold_customer_sk;  /* Same customer */
+		} else {
+			/* Different customer - when sale has customer, return must have customer too */
+			r->sr_customer_sk = stable_mk_join(SR_CUSTOMER_SK, CUSTOMER, nScale, combined_key, SR_CUSTOMER_SK);
+		}
+	}
 
 	/*
 	* the rest of the columns are generated for this specific return
 	*/
-	/* the items cannot be returned until they are sold; offset is handled in mk_join, based on sales date */
-	r->sr_returned_date_sk = mk_join (SR_RETURNED_DATE_SK, DATE, sale->ss_sold_date_sk);
-	genrand_integer(&nTemp, DIST_UNIFORM, (8 * 3600) - 1, (17 * 3600) - 1, 0, SR_RETURNED_TIME_SK);
-	r->sr_returned_time_sk = nTemp;
+	/* Use stable functions for ALL fields to ensure consistency */
+	r->sr_returned_date_sk = stable_mk_join(SR_RETURNED_DATE_SK, DATE, nScale, combined_key + sale->ss_sold_date_sk, SR_RETURNED_DATE_SK);
+	r->sr_returned_time_sk = stable_genrand_integer(STORE_RETURNS, nScale, combined_key, (8 * 3600) - 1, (17 * 3600) - 1, SR_RETURNED_TIME_SK);
 	r->sr_cdemo_sk =
-		mk_join (SR_CDEMO_SK, CUSTOMER_DEMOGRAPHICS, 1);
+		stable_mk_join(SR_CDEMO_SK, CUSTOMER_DEMOGRAPHICS, nScale, combined_key, SR_CDEMO_SK);
 	r->sr_hdemo_sk =
-		mk_join (SR_HDEMO_SK, HOUSEHOLD_DEMOGRAPHICS, 1);
-	r->sr_addr_sk = mk_join (SR_ADDR_SK, CUSTOMER_ADDRESS, 1);
-	r->sr_store_sk = mk_join (SR_STORE_SK, STORE, 1);
-	r->sr_reason_sk = mk_join (SR_REASON_SK, REASON, 1);
-	genrand_integer(&r->sr_pricing.quantity, DIST_UNIFORM,
-		1, sale->ss_pricing.quantity, 0, SR_PRICING);
+		stable_mk_join(SR_HDEMO_SK, HOUSEHOLD_DEMOGRAPHICS, nScale, combined_key, SR_HDEMO_SK);
+	r->sr_addr_sk = stable_mk_join(SR_ADDR_SK, CUSTOMER_ADDRESS, nScale, combined_key, SR_ADDR_SK);
+	r->sr_store_sk = stable_mk_join(SR_STORE_SK, STORE, nScale, combined_key, SR_STORE_SK);
+	r->sr_reason_sk = stable_mk_join(SR_REASON_SK, REASON, nScale, combined_key, SR_REASON_SK);
+	r->sr_pricing.quantity = stable_genrand_integer(STORE_RETURNS, nScale, combined_key,
+		1, sale->ss_pricing.quantity, SR_PRICING);
 	set_pricing(SR_PRICING, &r->sr_pricing);
 	
 	return (res);

@@ -658,12 +658,12 @@ w_store.o: tdef_functions.h scd.h
 w_store_returns.o: config.h porting.h w_store_returns.h pricing.h decimal.h
 w_store_returns.o: mathops.h w_store_sales.h constants.h tables.h print.h
 w_store_returns.o: columns.h genrand.h date.h dist.h address.h
-w_store_returns.o: build_support.h nulls.h tdefs.h tdef_functions.h
+w_store_returns.o: build_support.h nulls.h tdefs.h tdef_functions.h stable_rng.h params.h
 w_store_sales.o: config.h porting.h decimal.h mathops.h w_store_sales.h
 w_store_sales.o: constants.h pricing.h w_store_returns.h genrand.h date.h
 w_store_sales.o: dist.h address.h columns.h build_support.h tables.h print.h
 w_store_sales.o: nulls.h tdefs.h tdef_functions.h scaling.h permute.h scd.h
-w_store_sales.o: parallel.h
+w_store_sales.o: parallel.h stable_rng.h params.h
 w_timetbl.o: config.h porting.h constants.h w_timetbl.h date.h mathops.h
 w_timetbl.o: decimal.h genrand.h dist.h address.h build_support.h columns.h
 w_timetbl.o: pricing.h misc.h print.h tables.h nulls.h tdefs.h
